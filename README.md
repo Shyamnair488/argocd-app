@@ -147,6 +147,25 @@ kubectl get pods -n argocd
 
 Wait until the required pods are `Running`.
 
+### Install KEDA (required for the KEDA manifests)
+
+Install KEDA before syncing the application if you want to apply
+`k8s/keda-deployment.yaml` and `k8s/scaleobject.yaml`:
+
+```bash
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm install keda kedacore/keda \
+  --namespace keda \
+  --create-namespace
+```
+
+Verify that the `ScaledObject` CRD is available:
+
+```bash
+kubectl get crd scaledobjects.keda.sh
+```
+
 ### 7. Access Argo CD Using Port Forwarding
 
 Run in the foreground:
