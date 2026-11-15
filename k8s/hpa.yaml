@@ -3,6 +3,7 @@ kind: HorizontalPodAutoscaler
 
 metadata:
   name: nginx-hpa
+  namespace: default
 
 spec:
   scaleTargetRef:

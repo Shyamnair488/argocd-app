@@ -3,10 +3,11 @@ kind: ScaledObject
 
 metadata:
   name: nginx-cpu-scaler
+  namespace: default
 
 spec:
   scaleTargetRef:
-    name: nginx
+    name: nginx-keda
 
   minReplicaCount: 1
   maxReplicaCount: 5

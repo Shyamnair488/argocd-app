@@ -3,6 +3,10 @@ kind: Deployment
 
 metadata:
   name: nginx
+  namespace: default
+  labels:
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/component: web
 
 spec:
   replicas: 5
@@ -15,14 +19,29 @@ spec:
     metadata:
       labels:
         app: nginx
+        app.kubernetes.io/name: nginx
+        app.kubernetes.io/component: web
 
     spec:
       containers:
         - name: nginx
-          image: nginx:latest
+          image: nginx:1.27.2
 
           ports:
             - containerPort: 80
+              name: http
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
 
           resources:
             requests:
