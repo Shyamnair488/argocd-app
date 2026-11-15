@@ -1,5 +1,9 @@
 # Argo CD GitOps Application on Amazon EKS
 
+[![Validate manifests](https://github.com/Shyamnair488/argocd-app/actions/workflows/validate.yml/badge.svg)](https://github.com/Shyamnair488/argocd-app/actions/workflows/validate.yml)
+[![Security scan](https://github.com/Shyamnair488/argocd-app/actions/workflows/security.yml/badge.svg)](https://github.com/Shyamnair488/argocd-app/actions/workflows/security.yml)
+[![License](https://img.shields.io/github/license/Shyamnair488/argocd-app)](LICENSE)
+
 This project deploys an NGINX application to Amazon EKS with Argo CD. It
 includes a standard Deployment with an HPA and an optional KEDA deployment
 with a `ScaledObject`.
@@ -13,6 +17,15 @@ https://github.com/Shyamnair488/argocd-app
 The commands in this guide are written for Windows PowerShell. Each command
 is intentionally on one line so it can be pasted without shell continuation
 errors.
+
+## Repository quality
+
+- Pull requests are validated with GitHub Actions.
+- Kubernetes and Docker Compose configuration are checked automatically.
+- Trivy scans infrastructure configuration for high-severity issues.
+- Dependabot proposes updates for GitHub Actions and container images.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution standards and
+  [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## Prerequisites
 

@@ -1,0 +1,44 @@
+name: Validate manifests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Kubernetes and Compose files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install YAML validator
+        run: python -m pip install --disable-pip-version-check yamllint
+
+      - name: Lint YAML
+        run: yamllint -d relaxed README.md docker-compose.yml prometheus.yml k8s
+
+      - name: Install kubeconform
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz
+          sudo install kubeconform /usr/local/bin/kubeconform
+
+      - name: Validate Kubernetes manifests
+        run: kubeconform -strict -ignore-missing-schemas -summary k8s
+
+      - name: Validate Docker Compose
+        run: docker compose config --quiet

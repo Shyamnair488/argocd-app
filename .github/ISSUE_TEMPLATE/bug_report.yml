@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible problem with the manifests or documentation.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Explain the observed behavior and include the exact error.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: Include the command, manifest, and relevant environment details.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Kubernetes, Argo CD, KEDA, Helm, and operating system versions.
+    validations:
+      required: true

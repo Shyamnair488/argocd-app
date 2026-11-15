@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+*.kubeconfig
+*.log
+.terraform/
+terraform.tfstate*
+prometheus_data/
+grafana_data/
