@@ -1,399 +1,245 @@
-# Argo CD GitOps Deployment on AWS EKS
+# Argo CD GitOps Application on Amazon EKS
 
-**Objective:** Create an EKS cluster, install Argo CD, connect a GitHub repository, deploy an Nginx application using GitOps, and clean up the environment.
+This project deploys an NGINX application to Amazon EKS with Argo CD. It
+includes a standard Deployment with an HPA and an optional KEDA deployment
+with a `ScaledObject`.
 
-### Architecture
+## Repository
 
 ```text
-Developer
-   |
-   | git push
-   v
-GitHub Repository
-atulkamble/argocd-app
-   |
-   | monitored by
-   v
-+-------------------+
-|      Argo CD      |
-|   Namespace:      |
-|      argocd       |
-+---------+---------+
-          |
-          | Sync
-          v
-+-------------------+
-|    AWS EKS        |
-|   mycluster       |
-|                   |
-| Deployment: nginx |
-| Service: nginx    |
-+-------------------+
+https://github.com/Shyamnair488/argocd-app
 ```
 
-### 1. Create the EKS Cluster
+The commands in this guide are written for Windows PowerShell. Each command
+is intentionally on one line so it can be pasted without shell continuation
+errors.
 
-```bash
-eksctl create cluster \
-  --name mycluster \
-  --region us-east-1 \
-  --nodegroup-name mynodes \
-  --node-type t3.medium \
-  --nodes 2 \
-  --nodes-min 2 \
-  --nodes-max 2 \
-  --managed
-```
+## Prerequisites
 
-This creates an EKS cluster named `mycluster` with **2 managed EC2 worker nodes**.
+Install and authenticate these tools before starting:
 
-### 2. Update kubeconfig
+- AWS CLI
+- `eksctl`
+- `kubectl`
+- Helm
+- Git
+- Argo CD CLI (optional)
 
-```bash
-aws eks update-kubeconfig \
-  --name mycluster \
-  --region us-east-1
-```
+Verify the tools:
 
-Verify the current Kubernetes context:
-
-```bash
-kubectl config current-context
-```
-
-### 3. Check kubectl
-
-```bash
+```powershell
+aws --version
+eksctl version
 kubectl version --client
+helm version
+git --version
 ```
 
-### 4. Verify the EKS Cluster
+Clone the repository if it is not already available locally:
 
-```bash
+```powershell
+git clone https://github.com/Shyamnair488/argocd-app.git; Set-Location argocd-app
+```
+
+## 1. Create the EKS Cluster
+
+```powershell
+eksctl create cluster --name mycluster --region us-east-1 --node-type t3.small --nodes 2 --nodes-min 2 --nodes-max 2 --with-oidc --managed
+```
+
+This creates the `mycluster` EKS cluster with two managed nodes and OIDC
+enabled for AWS IAM roles for service accounts.
+
+## 2. Configure and Verify kubectl
+
+```powershell
+aws eks update-kubeconfig --name mycluster --region us-east-1
+kubectl config current-context
 kubectl get nodes
-kubectl get ns
-kubectl get svc
+kubectl get namespaces
 ```
 
-Expected node status:
+The nodes must show `Ready` before continuing.
 
-```text
-NAME                         STATUS   ROLES    AGE
-ip-xxx.ec2.internal          Ready    <none>   ...
-ip-xxx.ec2.internal          Ready    <none>   ...
-```
-
-### 5. Clone the GitHub Repository
-
-Repository:
-
-[atulkamble/argocd-app](https://github.com/atulkamble/argocd-app?utm_source=chatgpt.com)
-
-Clone it:
-
-```bash
-git clone https://github.com/atulkamble/argocd-app
-cd argocd-app
-code .
-```
-
-The repository should contain Kubernetes manifests such as:
-
-```text
-argocd-app/
-├── deployment.yaml
-└── service.yaml
-```
-
-Make sure the manifests either specify a namespace or are deployed through Argo CD to the intended destination namespace.
-
-### 6. Install Argo CD
+## 3. Install Argo CD
 
 Create the namespace:
 
-```bash
-kubectl create namespace argocd
-```
-
-Verify:
-
-```bash
-kubectl get ns
+```powershell
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 Install Argo CD:
 
-```bash
-kubectl apply \
-  -n argocd \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```powershell
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
-If you specifically encounter server-side apply conflicts, you can use:
+Wait for the Argo CD components:
 
-```bash
-kubectl apply \
-  --server-side \
-  --force-conflicts \
-  -n argocd \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-```
-
-Check Argo CD pods:
-
-```bash
+```powershell
+kubectl wait --for=condition=Available deployment --all -n argocd --timeout=10m
 kubectl get pods -n argocd
 ```
 
-Wait until the required pods are `Running`.
+## 4. Install KEDA
 
-### Install KEDA (required for the KEDA manifests)
+The KEDA manifests require the `ScaledObject` custom resource definition.
+Install KEDA before syncing this repository, otherwise Argo CD cannot
+discover `keda.sh/v1alpha1`.
 
-Install KEDA before syncing the application if you want to apply
-`k8s/keda-deployment.yaml` and `k8s/scaleobject.yaml`:
-
-```bash
+```powershell
 helm repo add kedacore https://kedacore.github.io/charts
 helm repo update
-helm install keda kedacore/keda \
-  --namespace keda \
-  --create-namespace
-```
-
-Verify that the `ScaledObject` CRD is available:
-
-```bash
+helm upgrade --install keda kedacore/keda --namespace keda --create-namespace --wait --timeout 5m
 kubectl get crd scaledobjects.keda.sh
+kubectl get pods -n keda
 ```
 
-### 7. Access Argo CD Using Port Forwarding
+## 5. Access the Argo CD UI
 
-Run in the foreground:
+Start port forwarding in a separate PowerShell window:
 
-```bash
+```powershell
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-Keep this terminal open.
+Open [https://localhost:8080](https://localhost:8080). A browser certificate
+warning is expected because this is a local port-forward.
 
-Alternatively, run it in the background:
-
-```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443 \
-  > /tmp/argocd-port-forward.log 2>&1 &
-```
-
-On macOS, to keep it running after the terminal session ends:
-
-```bash
-nohup kubectl port-forward svc/argocd-server -n argocd 8080:443 \
-  > /tmp/argocd-port-forward.log 2>&1 &
-```
-
-Check the process:
-
-```bash
-ps aux | grep "kubectl port-forward"
-```
-
-Check the log:
-
-```bash
-cat /tmp/argocd-port-forward.log
-```
-
-### 8. Retrieve the Argo CD Admin Password
-
-Username:
+The Argo CD username is:
 
 ```text
 admin
 ```
 
-Retrieve the generated password:
+Retrieve the generated password with the Windows PowerShell command below:
 
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d
-echo
+```powershell
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
 ```
 
-**Important:** Use the password returned by this command. Do not hard-code or share the generated admin password in lab documentation.
+Do not commit or share the generated password.
 
-### 9. Open the Argo CD UI
+## 6. Create the Argo CD Application
 
-Open:
+In the Argo CD UI, select **New App** and use:
 
 ```text
-https://localhost:8080
+Application name: nginx-app
+Project: default
+Repository URL: https://github.com/Shyamnair488/argocd-app
+Revision: main
+Path: .
+Cluster URL: https://kubernetes.default.svc
+Namespace: default
 ```
 
-Login with:
+Enable automated sync if desired. KEDA must be installed before creating or
+syncing this application because the repository includes a `ScaledObject`.
 
-```text
-Username: admin
-Password: <password-from-step-8>
+## 7. Sync and Verify
+
+Select **Create**, open the application, and select **Sync**.
+
+Verify the deployed resources:
+
+```powershell
+kubectl get deployments -n default
+kubectl get pods -n default
+kubectl get services -n default
+kubectl get hpa -n default
+kubectl get scaledobject -n default
 ```
 
-A browser certificate warning can occur because the local port-forward uses Argo CD's HTTPS endpoint.
+The standard resources are defined in [`k8s/`](k8s):
 
-### 10. Create the Argo CD Application
+| File | Resource | Purpose |
+| --- | --- | --- |
+| `deployment.yaml` | `nginx` Deployment | Standard NGINX workload |
+| `service.yaml` | `nginx-service` Service | LoadBalancer access |
+| `hpa.yaml` | `nginx-hpa` HPA | CPU-based autoscaling |
+| `keda-deployment.yaml` | `nginx-keda` Deployment | Separate KEDA workload |
+| `scaleobject.yaml` | `nginx-cpu-scaler` ScaledObject | KEDA CPU autoscaling |
 
-In the Argo CD UI, click:
+The standard Deployment and KEDA Deployment intentionally have different
+names and selectors so they do not overwrite each other. The Service targets
+only the standard `nginx` Deployment.
 
-```text
-+ NEW APP
-```
+## 8. Test GitOps
 
-Configure:
+Edit `k8s/deployment.yaml`, for example by changing `replicas`, then commit
+and push:
 
-```text
-Application Name : nginx-app
-Project          : default
-
-Repository URL   : https://github.com/atulkamble/argocd-app
-Revision         : main
-Path             : .
-
-Cluster URL      : https://kubernetes.default.svc
-Namespace        : default
-```
-
-For a basic first lab, you can leave sync manual.
-
-### 11. Create and Sync
-
-Click:
-
-```text
-CREATE
-```
-
-Then open `nginx-app` and select:
-
-```text
-SYNC
-```
-
-Argo CD follows this flow:
-
-```text
-GitHub
-   |
-   v
-Argo CD detects manifests
-   |
-   v
-Compare Git vs Cluster
-   |
-   v
-SYNC
-   |
-   v
-Kubernetes Deployment + Service
-   |
-   v
-Nginx Pods
-```
-
-### 12. Verify the Deployment
-
-```bash
-kubectl get deployments
-kubectl get pods
-kubectl get svc
-```
-
-For more details:
-
-```bash
-kubectl get all
-```
-
-You can also check the Argo CD application resources from the UI.
-
-### GitOps Test
-
-Modify your Kubernetes manifest, for example:
-
-```yaml
-spec:
-  replicas: 3
-```
-
-Commit and push:
-
-```bash
+```powershell
 git add .
-git commit -m "Scale nginx to 3 replicas"
+git commit -m "Scale NGINX deployment"
 git push origin main
 ```
 
-Argo CD will detect that the Git repository and cluster are different.
+Argo CD detects the Git change and reports the application as `OutOfSync`
+until automated or manual synchronization applies it.
 
-```text
-Git change
-    |
-    v
-Argo CD
-    |
-    | OutOfSync
-    v
-SYNC
-    |
-    v
-EKS updated
+## Optional Local Monitoring
+
+Start the pinned Prometheus, Grafana, and Node Exporter containers:
+
+```powershell
+docker compose up -d
 ```
 
-After syncing:
+Check their status:
 
-```bash
-kubectl get pods
+```powershell
+docker compose ps
 ```
 
-You should see the updated desired state reflected in EKS.
+Stop them:
 
-### 13. Stop Port Forwarding
-
-Find it:
-
-```bash
-ps aux | grep "kubectl port-forward"
+```powershell
+docker compose down
 ```
 
-Stop the Argo CD port-forward process:
+## Cleanup
 
-```bash
-pkill -f "kubectl port-forward svc/argocd-server"
+Remove the Argo CD port-forward by closing its PowerShell window.
+
+Delete the EKS cluster when the lab is complete:
+
+```powershell
+eksctl delete cluster --name mycluster --region us-east-1
 ```
 
-Verify:
+This deletes the cluster and its managed AWS resources. Confirm the cluster
+name and region before running the command.
 
-```bash
-ps aux | grep "kubectl port-forward"
+## Troubleshooting
+
+### Argo CD cannot find `keda.sh/v1alpha1`
+
+Install KEDA and verify the CRD:
+
+```powershell
+kubectl get crd scaledobjects.keda.sh
+kubectl get pods -n keda
 ```
 
-### 14. Delete the EKS Cluster
+Then retry the Argo CD sync.
 
-When the lab is finished:
+### Pods are not ready
 
-```bash
-eksctl delete cluster \
-  --name mycluster \
-  --region us-east-1
+Inspect the workload and events:
+
+```powershell
+kubectl describe deployment nginx -n default
+kubectl get events -n default --sort-by=.lastTimestamp
 ```
 
-This step is important because the EKS cluster and associated AWS resources can continue generating charges.
+### Service has no external address
 
-## Key Points to Remember
+`LoadBalancer` provisioning depends on the cloud provider and can take a few
+minutes:
 
-* **Git is the source of truth** in GitOps.
-* **Argo CD continuously compares** the desired state in Git with the Kubernetes cluster.
-* `OutOfSync` means Git and the live cluster differ.
-* `Synced` means the live state matches Git.
-* Argo CD is installed in the `argocd` namespace.
-* The Nginx application in this lab is deployed to the `default` namespace.
-* `https://kubernetes.default.svc` represents the Kubernetes cluster where Argo CD itself is running.
-* Port forwarding is suitable for **lab/local access**, not a typical production exposure method.
-* Retrieve the initial admin password dynamically instead of storing it in documentation.
-* Always delete temporary EKS clusters after practice to avoid unnecessary AWS charges.
+```powershell
+kubectl get service nginx-service -n default --watch
+```
